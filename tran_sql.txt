@@ -1,0 +1,74 @@
+use test;
+-- 単純なtranテスト
+select * from tran_test where tran_test_id = 1;
+    select * from tran_test where tran_test_id = 1;
+begin;
+select * from tran_test where tran_test_id = 1;
+    select * from tran_test where tran_test_id = 1;
+update tran_test set data_int=99 WHERE tran_test_id=1;
+select * from tran_test where tran_test_id = 1;
+    select * from tran_test where tran_test_id = 1;
+commit;
+select * from tran_test where tran_test_id = 1;
+    select * from tran_test where tran_test_id = 1;
+
+-- 簡単なアトミックの確認
+update tran_test set data_int=100 WHERE tran_test_id=1; -- 値を一端リセット
+select * from tran_test where tran_test_id = 1;
+    select * from tran_test where tran_test_id = 1;
+begin;
+select * from tran_test where tran_test_id = 1 for update; -- 書き込みロック
+update tran_test set data_int=99 WHERE tran_test_id=1;
+    begin;
+    update tran_test set data_int=98 WHERE tran_test_id=1;
+commit;
+select * from tran_test where tran_test_id = 1;
+    commit;
+select * from tran_test where tran_test_id = 1;
+    select * from tran_test where tran_test_id = 1;
+
+-- read lock
+update tran_test set data_int=100 WHERE tran_test_id=1; -- 値を一端リセット
+select * from tran_test where tran_test_id = 1;
+    select * from tran_test where tran_test_id = 1;
+begin;
+select * from tran_test where tran_test_id = 1 for update; -- 書き込みロック
+    select * from tran_test where tran_test_id = 1; -- 「単純に見る」場合：なのでロックがかからない
+    begin;
+    select * from tran_test where tran_test_id = 1 for update; -- 「書き込み用に見る」場合と考えられるtran内でのselect(for update)：ロックがかかる
+update tran_test set data_int=99 WHERE tran_test_id=1;
+commit; -- この時点で「もう一つの画面」のselect」が見れる…か、タイムアウトしてるか
+    commit;
+-- お金計算とかは「値を指定」ではなくて「引き算」にした方がより安全
+update tran_test set data_int=100 WHERE tran_test_id=1;
+begin;
+select * from tran_test where tran_test_id = 1 for update; -- 書き込みロック
+update tran_test set data_int=data_int-10 WHERE tran_test_id=1;
+    begin;
+    select * from tran_test where tran_test_id = 1 for update; -- 書き込みロック
+commit;
+select * from tran_test where tran_test_id = 1;
+    update tran_test set data_int=data_int-10 WHERE tran_test_id=1;
+select * from tran_test where tran_test_id = 1;
+    select * from tran_test where tran_test_id = 1;
+    commit;
+select * from tran_test where tran_test_id = 1;
+    select * from tran_test where tran_test_id = 1;
+
+-- デッドロック：実際には、これくらい単純なデッドロックだとMySQLが跳ねてくれる(ので、概念だけ)
+update tran_test set data_int=100 WHERE tran_test_id=1; -- 値を一端リセット
+update tran_test set data_int=200 WHERE tran_test_id=2; -- 値を一端リセット
+begin;
+    begin;
+update tran_test set data_int=90 WHERE tran_test_id=1;
+    update tran_test set data_int=888 WHERE tran_test_id=2;
+update tran_test set data_int=80 WHERE tran_test_id=2;
+    update tran_test set data_int=999 WHERE tran_test_id=1; -- デッドロック！
+select * from tran_test;
+    select * from tran_test; -- 「どちらのトランザクションもコミットされていない」ので、デフォルトのまま
+commit; -- 「正常に成功したトランザクション」のコミット
+select * from tran_test;
+    select * from tran_test; -- 「トランザクション内なので」デフォルトデータのまま
+    rollback; -- エラーが起きたから
+select * from tran_test;
+    select * from tran_test;
